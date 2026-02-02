@@ -1,0 +1,115 @@
+project_id = "yrlbwzxphjtnivjbpzsq"
+
+[functions.validate-invite]
+verify_jwt = false
+
+[functions.manage-api-keys]
+verify_jwt = false
+
+[functions.calendly-webhook]
+verify_jwt = false
+
+[functions.sync-close]
+verify_jwt = false
+
+[functions.fetch-close-source]
+verify_jwt = false
+
+[functions.sync-calendly]
+verify_jwt = false
+
+[functions.sync-whop]
+verify_jwt = false
+
+[functions.whop-webhook]
+verify_jwt = false
+
+[functions.sync-close-attribution]
+verify_jwt = false
+
+[functions.send-invite-email]
+verify_jwt = false
+
+[functions.generic-webhook]
+verify_jwt = false
+
+[functions.sync-whop-connection]
+verify_jwt = false
+
+[functions.register-calendly-webhook]
+verify_jwt = false
+
+[functions.create-payout-snapshot]
+verify_jwt = false
+
+[functions.batch-restore-payments]
+verify_jwt = false
+
+[functions.backfill-whop-connection]
+verify_jwt = false
+
+[functions.get-calendly-utilization]
+verify_jwt = false
+
+[functions.slack-daily-report]
+verify_jwt = false
+
+[functions.slack-overdue-pcf-reminder]
+verify_jwt = false
+
+[functions.qa-agent]
+verify_jwt = false
+
+[functions.send-commission-link]
+verify_jwt = false
+
+[functions.sync-close-activities]
+verify_jwt = false
+
+[functions.delete-auth-user]
+verify_jwt = false
+
+[functions.portal-pcf]
+verify_jwt = false
+
+[functions.sync-ghl-contacts]
+verify_jwt = false
+
+[functions.fetch-ghl-pipelines]
+verify_jwt = false
+
+[functions.sync-hubspot-contacts]
+verify_jwt = false
+
+[functions.backfill-calendly-closers]
+verify_jwt = false
+
+[functions.fetch-close-custom-fields]
+verify_jwt = false
+
+[functions.calcom-webhook]
+verify_jwt = false
+
+[functions.register-calcom-webhook]
+verify_jwt = false
+
+[functions.sync-calcom]
+verify_jwt = false
+
+[functions.get-calcom-utilization]
+verify_jwt = false
+
+[functions.backfill-calcom-closers]
+verify_jwt = false
+
+[functions.backfill-calcom-noshows]
+verify_jwt = false
+
+[functions.sync-calcom-hosts]
+verify_jwt = false
+
+[functions.auto-sync-calcom]
+verify_jwt = false
+
+[functions.diagnose-calcom-webhook]
+verify_jwt = false
