@@ -38,27 +38,18 @@ import { OrganizationSwitcher } from '@/components/organization/OrganizationSwit
 import { Badge } from '@/components/ui/badge';
 import { useOrganization } from '@/hooks/useOrganization';
 
-// Acquisition Ace org ID - only this org sees all features
-const ACQUISITION_ACE_ORG_ID = '74c1d616-43ca-4acc-bd3a-4cefc171fa31';
-
-const getAdminItems = (isAcquisitionAce: boolean) => {
-  const baseItems = [
+// All admin users see all features now (removed org restriction)
+const getAdminItems = () => {
+  return [
     { title: 'Dashboard', url: '/', icon: LayoutDashboard },
     { title: 'Attribution', url: '/attribution', icon: ClipboardList },
     { title: 'Analytics', url: '/analytics', icon: BarChart3 },
     { title: 'Call Reports', url: '/calls-report', icon: FileBarChart },
+    { title: 'Setter Metrics', url: '/setter-metrics', icon: Headphones },
+    { title: 'Team', url: '/team', icon: Activity },
+    { title: 'Rep Portal', url: '/rep', icon: ExternalLink },
+    { title: 'Settings', url: '/settings', icon: Settings },
   ];
-  
-  // Only Acquisition Ace sees Setter Metrics and Team
-  if (isAcquisitionAce) {
-    baseItems.push({ title: 'Setter Metrics', url: '/setter-metrics', icon: Headphones });
-    baseItems.push({ title: 'Team', url: '/team', icon: Activity });
-  }
-  
-  baseItems.push({ title: 'Rep Portal', url: '/rep', icon: ExternalLink });
-  baseItems.push({ title: 'Settings', url: '/settings', icon: Settings });
-  
-  return baseItems;
 };
 
 const superAdminItems = [
@@ -77,9 +68,8 @@ export function AppSidebar() {
   const { isAdmin, isSuperAdmin, profile, signOut } = useAuth();
   const { currentOrganization } = useOrganization();
   const collapsed = state === 'collapsed';
-  
-  const isAcquisitionAce = currentOrganization?.id === ACQUISITION_ACE_ORG_ID;
-  const adminItems = getAdminItems(isAcquisitionAce);
+
+  const adminItems = getAdminItems();
   const items = isAdmin ? adminItems : salesRepItems;
   const currentPath = location.pathname;
 
@@ -144,8 +134,8 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {/* Super Admin Section - only for trey@salesreps.com */}
-        {isSuperAdmin && profile?.email === 'trey@salesreps.com' && (
+        {/* Super Admin Section - for all super admins */}
+        {isSuperAdmin && (
           <SidebarGroup>
             <SidebarGroupLabel className="text-sidebar-foreground/50">
               Super Admin
