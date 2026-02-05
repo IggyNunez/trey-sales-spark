@@ -3,8 +3,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 import { useOrganization } from './useOrganization';
 
-export type InviteType = 'whitelabel' | 'sales_rep' | 'admin';
-export type InviteRole = 'admin' | 'member';
+export type InviteType = 'whitelabel' | 'sales_rep' | 'admin' | 'closer' | 'setter';
+export type InviteRole = 'admin' | 'member' | 'closer' | 'setter';
 
 export interface Invitation {
   id: string;
@@ -94,17 +94,16 @@ export function useDeleteInvitation() {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      // CRITICAL: Include org filter to prevent cross-org deletions
-      let query = supabase
-        .from('invitations')
-        .delete()
-        .eq('id', id);
-
-      if (orgId) {
-        query = query.eq('organization_id', orgId);
+      // SECURITY: Require org to be selected to prevent cross-org deletions
+      if (!orgId) {
+        throw new Error('No organization selected');
       }
 
-      const { error } = await query;
+      const { error } = await supabase
+        .from('invitations')
+        .delete()
+        .eq('id', id)
+        .eq('organization_id', orgId);
 
       if (error) throw error;
     },
@@ -121,20 +120,21 @@ export function useResendInvitation() {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      // CRITICAL: Include org filter to prevent cross-org updates
-      let query = supabase
+      // SECURITY: Require org to be selected to prevent cross-org updates
+      if (!orgId) {
+        throw new Error('No organization selected');
+      }
+
+      const { data, error } = await supabase
         .from('invitations')
         .update({
           expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
           status: 'pending',
         })
-        .eq('id', id);
-
-      if (orgId) {
-        query = query.eq('organization_id', orgId);
-      }
-
-      const { data, error } = await query.select().single();
+        .eq('id', id)
+        .eq('organization_id', orgId)
+        .select()
+        .single();
 
       if (error) throw error;
       return data as Invitation;
@@ -152,16 +152,18 @@ export function useUpdateInvitationRole() {
 
   return useMutation({
     mutationFn: async ({ id, role }: { id: string; role: InviteRole }) => {
-      let query = supabase
-        .from('invitations')
-        .update({ role })
-        .eq('id', id);
-
-      if (orgId) {
-        query = query.eq('organization_id', orgId);
+      // SECURITY: Require org to be selected to prevent cross-org updates
+      if (!orgId) {
+        throw new Error('No organization selected');
       }
 
-      const { data, error } = await query.select().single();
+      const { data, error } = await supabase
+        .from('invitations')
+        .update({ role })
+        .eq('id', id)
+        .eq('organization_id', orgId)
+        .select()
+        .single();
 
       if (error) throw error;
       return data as Invitation;

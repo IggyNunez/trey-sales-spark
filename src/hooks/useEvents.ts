@@ -70,7 +70,7 @@ export function useEvents(filters?: {
   };
   limit?: number;
 }) {
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, isCloser, isSetter, isAdminOrAbove, profile } = useAuth();
   const { currentOrganization } = useOrganization();
   const orgId = currentOrganization?.id;
 
@@ -93,6 +93,10 @@ export function useEvents(filters?: {
       filters?.limit,
       user?.id,
       isAdmin,
+      isCloser,
+      isSetter,
+      profile?.linked_closer_name,
+      profile?.linked_setter_name,
     ],
     queryFn: async () => {
       let query = supabase
@@ -107,6 +111,29 @@ export function useEvents(filters?: {
       if (orgId) {
         query = query.eq('organization_id', orgId);
       }
+
+      // Role-based filtering (in addition to RLS at database level)
+      // Closers can only see their own events
+      if (isCloser && !isAdminOrAbove) {
+        const closerName = profile?.linked_closer_name;
+        const closerEmail = user?.email;
+        if (closerName && closerEmail) {
+          query = query.or(`closer_name.eq.${closerName},closer_email.eq.${closerEmail}`);
+        } else if (closerName) {
+          query = query.eq('closer_name', closerName);
+        } else if (closerEmail) {
+          query = query.eq('closer_email', closerEmail);
+        }
+      }
+
+      // Setters can only see events for leads they set
+      if (isSetter && !isAdminOrAbove) {
+        const setterName = profile?.linked_setter_name;
+        if (setterName) {
+          query = query.eq('setter_name', setterName);
+        }
+      }
+
       // Filter by scheduled_at date range (when the call is slated to take place)
       if (filters?.startDate) {
         query = query.gte('scheduled_at', filters.startDate.toISOString());
@@ -263,12 +290,12 @@ export function useExistingPCF(eventId: string) {
 }
 
 export function useMyEvents() {
-  const { user, profile } = useAuth();
+  const { user, profile, isCloser, isSetter, isAdminOrAbove } = useAuth();
   const { currentOrganization } = useOrganization();
   const orgId = currentOrganization?.id;
 
   return useQuery({
-    queryKey: ['my-events', user?.id, profile?.email, orgId],
+    queryKey: ['my-events', user?.id, profile?.email, profile?.linked_closer_name, profile?.linked_setter_name, orgId, isCloser, isSetter],
     queryFn: async () => {
       let query = supabase
         .from('events')
@@ -280,11 +307,33 @@ export function useMyEvents() {
         query = query.eq('organization_id', orgId);
       }
 
+      // Role-based filtering
+      // For closers: filter by closer_name or closer_email
+      if (isCloser && !isAdminOrAbove) {
+        const closerName = profile?.linked_closer_name;
+        const closerEmail = user?.email;
+        if (closerName && closerEmail) {
+          query = query.or(`closer_name.eq.${closerName},closer_email.eq.${closerEmail}`);
+        } else if (closerName) {
+          query = query.eq('closer_name', closerName);
+        } else if (closerEmail) {
+          query = query.eq('closer_email', closerEmail);
+        }
+      }
+
+      // For setters: filter by setter_name
+      if (isSetter && !isAdminOrAbove) {
+        const setterName = profile?.linked_setter_name;
+        if (setterName) {
+          query = query.eq('setter_name', setterName);
+        }
+      }
+
       const { data, error } = await query;
 
       if (error) throw error;
       return data as Event[];
     },
-    enabled: !!user && !!profile?.email && !!orgId,
+    enabled: !!user && !!orgId,
   });
 }

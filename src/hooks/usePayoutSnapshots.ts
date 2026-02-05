@@ -85,19 +85,22 @@ export function usePayoutSnapshotDetails(snapshotId: string | null) {
     queryFn: async () => {
       if (!snapshotId) return { summaries: [], details: [] };
 
-      // CRITICAL: First verify the snapshot belongs to this organization
-      if (orgId) {
-        const { data: snapshot, error: verifyError } = await supabase
-          .from('payout_snapshots')
-          .select('id')
-          .eq('id', snapshotId)
-          .eq('organization_id', orgId)
-          .maybeSingle();
+      // SECURITY: Require org to be selected to prevent cross-org access
+      if (!orgId) {
+        throw new Error('No organization selected');
+      }
 
-        if (verifyError) throw verifyError;
-        if (!snapshot) {
-          throw new Error('Snapshot not found or access denied');
-        }
+      // CRITICAL: Verify the snapshot belongs to this organization
+      const { data: snapshot, error: verifyError } = await supabase
+        .from('payout_snapshots')
+        .select('id')
+        .eq('id', snapshotId)
+        .eq('organization_id', orgId)
+        .maybeSingle();
+
+      if (verifyError) throw verifyError;
+      if (!snapshot) {
+        throw new Error('Snapshot not found or access denied');
       }
 
       const [summariesRes, detailsRes] = await Promise.all([
@@ -156,20 +159,19 @@ export function useFinalizeSnapshot() {
 
   return useMutation({
     mutationFn: async (snapshotId: string) => {
-      // CRITICAL: Include org filter to prevent cross-org updates
-      let query = supabase
+      // SECURITY: Require org to be selected to prevent cross-org updates
+      if (!orgId) {
+        throw new Error('No organization selected');
+      }
+
+      const { error } = await supabase
         .from('payout_snapshots')
         .update({
           status: 'finalized',
           finalized_at: new Date().toISOString(),
         })
-        .eq('id', snapshotId);
-
-      if (orgId) {
-        query = query.eq('organization_id', orgId);
-      }
-
-      const { error } = await query;
+        .eq('id', snapshotId)
+        .eq('organization_id', orgId);
 
       if (error) throw error;
     },
@@ -190,17 +192,16 @@ export function useDeleteSnapshot() {
 
   return useMutation({
     mutationFn: async (snapshotId: string) => {
-      // CRITICAL: Include org filter to prevent cross-org deletes
-      let query = supabase
-        .from('payout_snapshots')
-        .delete()
-        .eq('id', snapshotId);
-
-      if (orgId) {
-        query = query.eq('organization_id', orgId);
+      // SECURITY: Require org to be selected to prevent cross-org deletes
+      if (!orgId) {
+        throw new Error('No organization selected');
       }
 
-      const { error } = await query;
+      const { error } = await supabase
+        .from('payout_snapshots')
+        .delete()
+        .eq('id', snapshotId)
+        .eq('organization_id', orgId);
 
       if (error) throw error;
     },
@@ -221,19 +222,22 @@ export function useRemoveSnapshotDetail() {
 
   return useMutation({
     mutationFn: async ({ detailId, snapshotId }: { detailId: string; snapshotId: string }) => {
-      // CRITICAL: First verify the snapshot belongs to this organization
-      if (orgId) {
-        const { data: verifySnapshot, error: verifyError } = await supabase
-          .from('payout_snapshots')
-          .select('id')
-          .eq('id', snapshotId)
-          .eq('organization_id', orgId)
-          .maybeSingle();
+      // SECURITY: Require org to be selected to prevent cross-org access
+      if (!orgId) {
+        throw new Error('No organization selected');
+      }
 
-        if (verifyError) throw verifyError;
-        if (!verifySnapshot) {
-          throw new Error('Snapshot not found or access denied');
-        }
+      // CRITICAL: Verify the snapshot belongs to this organization
+      const { data: verifySnapshot, error: verifyError } = await supabase
+        .from('payout_snapshots')
+        .select('id')
+        .eq('id', snapshotId)
+        .eq('organization_id', orgId)
+        .maybeSingle();
+
+      if (verifyError) throw verifyError;
+      if (!verifySnapshot) {
+        throw new Error('Snapshot not found or access denied');
       }
 
       // First get the detail to know the amounts
@@ -254,16 +258,12 @@ export function useRemoveSnapshotDetail() {
       if (deleteError) throw deleteError;
 
       // Update the snapshot totals with org filter
-      let snapshotQuery = supabase
+      const { data: snapshot, error: snapshotFetchError } = await supabase
         .from('payout_snapshots')
         .select('total_revenue, total_refunds, net_revenue')
-        .eq('id', snapshotId);
-
-      if (orgId) {
-        snapshotQuery = snapshotQuery.eq('organization_id', orgId);
-      }
-
-      const { data: snapshot, error: snapshotFetchError } = await snapshotQuery.single();
+        .eq('id', snapshotId)
+        .eq('organization_id', orgId)
+        .single();
 
       if (snapshotFetchError) throw snapshotFetchError;
 
@@ -280,20 +280,15 @@ export function useRemoveSnapshotDetail() {
       const totalRefunds = parseNumber(snapshot.total_refunds) - parseNumber(detail.refund_amount);
       const netRevenue = parseNumber(snapshot.net_revenue) - parseNumber(detail.net_amount);
 
-      let updateQuery = supabase
+      const { error: updateError } = await supabase
         .from('payout_snapshots')
         .update({
           total_revenue: totalRevenue,
           total_refunds: totalRefunds,
           net_revenue: netRevenue,
         })
-        .eq('id', snapshotId);
-
-      if (orgId) {
-        updateQuery = updateQuery.eq('organization_id', orgId);
-      }
-
-      const { error: updateError } = await updateQuery;
+        .eq('id', snapshotId)
+        .eq('organization_id', orgId);
 
       if (updateError) throw updateError;
     },
@@ -315,17 +310,16 @@ export function useUpdatePaymentDate() {
 
   return useMutation({
     mutationFn: async ({ paymentId, newDate }: { paymentId: string; newDate: string }) => {
-      // CRITICAL: Include org filter to prevent cross-org updates
-      let query = supabase
-        .from('payments')
-        .update({ payment_date: newDate })
-        .eq('id', paymentId);
-
-      if (orgId) {
-        query = query.eq('organization_id', orgId);
+      // SECURITY: Require org to be selected to prevent cross-org updates
+      if (!orgId) {
+        throw new Error('No organization selected');
       }
 
-      const { error } = await query;
+      const { error } = await supabase
+        .from('payments')
+        .update({ payment_date: newDate })
+        .eq('id', paymentId)
+        .eq('organization_id', orgId);
 
       if (error) throw error;
     },

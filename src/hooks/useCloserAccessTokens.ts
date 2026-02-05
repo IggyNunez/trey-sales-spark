@@ -75,31 +75,26 @@ export function useRegenerateCloserAccessToken() {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      // CRITICAL: Include org filter to prevent cross-org token regeneration
-      let fetchQuery = supabase
-        .from('closer_access_tokens')
-        .select('closer_name, organization_id, created_by')
-        .eq('id', id);
-
-      if (orgId) {
-        fetchQuery = fetchQuery.eq('organization_id', orgId);
+      // SECURITY: Require org to be selected to prevent cross-org operations
+      if (!orgId) {
+        throw new Error('No organization selected');
       }
 
-      const { data: existing, error: fetchError } = await fetchQuery.single();
+      const { data: existing, error: fetchError } = await supabase
+        .from('closer_access_tokens')
+        .select('closer_name, organization_id, created_by')
+        .eq('id', id)
+        .eq('organization_id', orgId)
+        .single();
 
       if (fetchError) throw fetchError;
 
       // Delete the old token with org filter
-      let deleteQuery = supabase
+      const { error: deleteError } = await supabase
         .from('closer_access_tokens')
         .delete()
-        .eq('id', id);
-
-      if (orgId) {
-        deleteQuery = deleteQuery.eq('organization_id', orgId);
-      }
-
-      const { error: deleteError } = await deleteQuery;
+        .eq('id', id)
+        .eq('organization_id', orgId);
 
       if (deleteError) throw deleteError;
 
@@ -130,17 +125,16 @@ export function useDeleteCloserAccessToken() {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      // CRITICAL: Include org filter to prevent cross-org deletions
-      let query = supabase
-        .from('closer_access_tokens')
-        .delete()
-        .eq('id', id);
-
-      if (orgId) {
-        query = query.eq('organization_id', orgId);
+      // SECURITY: Require org to be selected to prevent cross-org deletions
+      if (!orgId) {
+        throw new Error('No organization selected');
       }
 
-      const { error } = await query;
+      const { error } = await supabase
+        .from('closer_access_tokens')
+        .delete()
+        .eq('id', id)
+        .eq('organization_id', orgId);
 
       if (error) throw error;
     },
@@ -162,11 +156,13 @@ export function useValidateCloserToken() {
 
       if (error) throw error;
 
-      // Update last_used_at
+      // SECURITY: Update last_used_at with both id AND token filter
+      // This ensures we only update the exact token that was validated
       await supabase
         .from('closer_access_tokens')
         .update({ last_used_at: new Date().toISOString() })
-        .eq('id', data.id);
+        .eq('id', data.id)
+        .eq('token', token);
 
       return data as CloserAccessToken;
     },

@@ -62,9 +62,11 @@ export function usePlatformAggregates({ startDate, endDate, bookingPlatform, utm
       if (eventsError) throw eventsError;
 
       // Fetch payments with event_id for cash calculation
+      // SECURITY: Always filter by organization_id to prevent cross-org data leak
       let paymentsQuery = supabase
         .from('payments')
         .select('event_id, amount, refund_amount')
+        .eq('organization_id', orgId!)
         .not('event_id', 'is', null);
 
       const { data: payments, error: paymentsError } = await paymentsQuery.limit(5000);

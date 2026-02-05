@@ -18,11 +18,12 @@ interface InviteData {
   id: string;
   email: string;
   invite_type: string;
-  closer_name: string | null;
+  closer_name: string | null; // Also used as setter_name for setter invites
   status: string;
   expires_at: string;
   organization_id: string | null;
   organization_name?: string | null;
+  role?: string | null; // admin, member, closer, setter
 }
 
 export default function AcceptInvite() {
@@ -78,6 +79,7 @@ export default function AcceptInvite() {
           expires_at: invitation.expires_at,
           organization_id: invitation.organization_id,
           organization_name: invitation.organization_name,
+          role: invitation.role,
         });
         setIsLoading(false);
       } catch (err) {
@@ -148,27 +150,43 @@ export default function AcceptInvite() {
       // Wait a moment for the profile trigger to create the profile
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      // Update the profile with linked_closer_name and name
-      const { error: profileError } = inviteData.closer_name
-        ? await supabase
-            .from('profiles')
-            .update({
-              linked_closer_name: inviteData.closer_name,
-              name: name
-            })
-            .eq('user_id', authData.user.id)
-        : await supabase
-            .from('profiles')
-            .update({ name: name })
-            .eq('user_id', authData.user.id);
+      // Determine role and profile updates based on invite type/role
+      const inviteRole = inviteData.role || inviteData.invite_type;
+      const isCloserInvite = inviteRole === 'closer' || inviteData.invite_type === 'sales_rep';
+      const isSetterInvite = inviteRole === 'setter';
+
+      // Build profile update object
+      const profileUpdate: Record<string, string | null> = { name };
+      if (isCloserInvite && inviteData.closer_name) {
+        profileUpdate.linked_closer_name = inviteData.closer_name;
+      }
+      if (isSetterInvite && inviteData.closer_name) {
+        // For setter invites, closer_name field contains the setter name
+        profileUpdate.linked_setter_name = inviteData.closer_name;
+      }
+
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update(profileUpdate)
+        .eq('user_id', authData.user.id);
 
       if (profileError) {
         throw new Error(`Failed to update profile: ${profileError.message}`);
       }
 
-      // Add user role based on invite type
-      // client_admin and admin get 'admin' role, sales_rep gets 'sales_rep'
-      const userRole = inviteData.invite_type === 'sales_rep' ? 'sales_rep' : 'admin';
+      // Determine user role based on invite type and role
+      let userRole: string;
+      if (inviteRole === 'closer' || inviteData.invite_type === 'sales_rep') {
+        userRole = 'closer';
+      } else if (inviteRole === 'setter') {
+        userRole = 'setter';
+      } else if (inviteData.invite_type === 'admin' || inviteData.invite_type === 'client_admin' || inviteRole === 'admin') {
+        userRole = 'admin';
+      } else {
+        // Default fallback - member role gets 'sales_rep' for backward compatibility
+        userRole = 'sales_rep';
+      }
+
       const { error: roleError } = await supabase
         .from('user_roles')
         .insert({ user_id: authData.user.id, role: userRole });
@@ -177,19 +195,39 @@ export default function AcceptInvite() {
         throw new Error(`Failed to assign user role: ${roleError.message}`);
       }
 
-      // Determine org membership role (admin invite = admin role, sales_rep = member)
-      const orgMemberRole = inviteData.invite_type === 'admin' || inviteData.invite_type === 'client_admin' ? 'admin' : 'member';
+      // Determine org membership role
+      let orgMemberRole = 'member';
+      if (inviteData.invite_type === 'admin' || inviteData.invite_type === 'client_admin' || inviteRole === 'admin') {
+        orgMemberRole = 'admin';
+      }
 
-      // Link the closer record to this user's profile if closer_name is provided
-      if (inviteData.closer_name && inviteData.organization_id) {
+      // Link the closer record to this user's profile if this is a closer invite
+      if (isCloserInvite && inviteData.closer_name && inviteData.organization_id) {
         const { error: closerLinkError } = await supabase
           .from('closers')
           .update({ profile_id: authData.user.id })
           .eq('name', inviteData.closer_name)
           .eq('organization_id', inviteData.organization_id);
-        
+
         if (closerLinkError) {
           console.warn('Failed to link closer record:', closerLinkError.message);
+          // Don't throw - this is not critical
+        }
+      }
+
+      // Link the setter record to this user's profile if this is a setter invite
+      if (isSetterInvite && inviteData.closer_name && inviteData.organization_id) {
+        const { error: setterLinkError } = await supabase
+          .from('setters')
+          .update({
+            profile_id: authData.user.id,
+            user_id: authData.user.id,
+          })
+          .eq('name', inviteData.closer_name)
+          .eq('organization_id', inviteData.organization_id);
+
+        if (setterLinkError) {
+          console.warn('Failed to link setter record:', setterLinkError.message);
           // Don't throw - this is not critical
         }
       }
@@ -282,16 +320,16 @@ export default function AcceptInvite() {
   }
 
   const getInviteTypeLabel = () => {
-    switch (inviteData?.invite_type) {
-      case 'sales_rep':
-        return 'a Sales Rep';
-      case 'admin':
-        return 'an Organization Member';
-      case 'client_admin':
-        return 'an Admin';
-      default:
-        return 'a Whitelabel Partner';
-    }
+    // Check role first, then invite_type for backward compatibility
+    const role = inviteData?.role;
+    const inviteType = inviteData?.invite_type;
+
+    if (role === 'closer' || inviteType === 'closer') return 'a Closer';
+    if (role === 'setter' || inviteType === 'setter') return 'a Setter';
+    if (inviteType === 'sales_rep') return 'a Sales Rep';
+    if (role === 'admin' || inviteType === 'admin') return 'an Organization Member';
+    if (inviteType === 'client_admin') return 'an Admin';
+    return 'a Team Member';
   };
 
   return (
@@ -316,7 +354,12 @@ export default function AcceptInvite() {
             {inviteData?.closer_name && (
               <>
                 <br />
-                <span className="text-sm">Linked to: <strong>{inviteData.closer_name}</strong></span>
+                <span className="text-sm">
+                  {inviteData.role === 'setter' || inviteData.invite_type === 'setter'
+                    ? 'Setter Name:'
+                    : 'Linked to:'}{' '}
+                  <strong>{inviteData.closer_name}</strong>
+                </span>
               </>
             )}
           </CardDescription>

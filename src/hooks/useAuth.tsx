@@ -2,7 +2,16 @@ import { useState, useEffect, useCallback, createContext, useContext, ReactNode 
 import { User, Session, AuthError } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 
-type AppRole = 'admin' | 'sales_rep' | 'super_admin';
+type AppRole = 'admin' | 'sales_rep' | 'super_admin' | 'closer' | 'setter';
+
+interface ProfileData {
+  id: string;
+  name: string;
+  email: string;
+  linked_closer_name?: string | null;
+  linked_setter_name?: string | null;
+  current_organization_id?: string | null;
+}
 
 interface AuthContextType {
   user: User | null;
@@ -11,8 +20,11 @@ interface AuthContextType {
   isAdmin: boolean;
   isSalesRep: boolean;
   isSuperAdmin: boolean;
+  isCloser: boolean;
+  isSetter: boolean;
+  isAdminOrAbove: boolean;
   userRole: AppRole | null;
-  profile: { id: string; name: string; email: string; linked_closer_name?: string | null; current_organization_id?: string | null } | null;
+  profile: ProfileData | null;
   signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>;
   signUp: (email: string, password: string, name: string) => Promise<{ data: { user: User | null } | null; error: AuthError | null }>;
   signOut: () => Promise<void>;
@@ -27,8 +39,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isSalesRep, setIsSalesRep] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [isCloser, setIsCloser] = useState(false);
+  const [isSetter, setIsSetter] = useState(false);
+  const [isAdminOrAbove, setIsAdminOrAbove] = useState(false);
   const [userRole, setUserRole] = useState<AppRole | null>(null);
-  const [profile, setProfile] = useState<{ id: string; name: string; email: string; linked_closer_name?: string | null; current_organization_id?: string | null } | null>(null);
+  const [profile, setProfile] = useState<ProfileData | null>(null);
 
   const fetchUserRole = useCallback(async (userId: string) => {
     const { data: roleData } = await supabase
@@ -42,14 +57,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUserRole(role);
       setIsSuperAdmin(role === 'super_admin');
       setIsAdmin(role === 'admin' || role === 'super_admin');
+      setIsAdminOrAbove(role === 'admin' || role === 'super_admin');
       setIsSalesRep(role === 'sales_rep');
+      setIsCloser(role === 'closer');
+      setIsSetter(role === 'setter');
     }
   }, []);
 
   const fetchUserProfile = useCallback(async (userId: string) => {
     const { data: profileData } = await supabase
       .from('profiles')
-      .select('id, name, email, linked_closer_name, current_organization_id')
+      .select('id, name, email, linked_closer_name, linked_setter_name, current_organization_id')
       .eq('user_id', userId)
       .maybeSingle();
 
@@ -72,6 +90,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsAdmin(false);
         setIsSalesRep(false);
         setIsSuperAdmin(false);
+        setIsCloser(false);
+        setIsSetter(false);
+        setIsAdminOrAbove(false);
         setUserRole(null);
         setProfile(null);
       }
@@ -125,6 +146,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAdmin,
       isSalesRep,
       isSuperAdmin,
+      isCloser,
+      isSetter,
+      isAdminOrAbove,
       userRole,
       profile,
       signIn,

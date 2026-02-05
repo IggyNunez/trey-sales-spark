@@ -60,8 +60,10 @@ function applyConditionsToData<T extends Record<string, unknown>>(
           }
           return fieldValue === condition.value;
         case 'not_equals':
-          // For not_equals, NULL/undefined should NOT automatically match
-          if (fieldValue === null || fieldValue === undefined) return false;
+          // For not_equals, NULL/undefined means "doesn't equal the specified value"
+          // Business logic: if outcome is unknown, it's not equal to 'no_show' (or any specific value)
+          // This allows "Calls Showed" (event_outcome != 'no_show') to include events without outcome yet
+          if (fieldValue === null || fieldValue === undefined) return true;
           if (isBooleanField) {
             return fieldValue !== compareValue;
           }
@@ -256,7 +258,8 @@ function calculateMetricValue(
   };
 }
 
-// Helper to filter data by date field
+// Helper to filter data by date field with fallback support
+// For example, if filtering by booked_at but it's null, fall back to created_at or scheduled_at
 function filterDataByDateField(
   data: Record<string, unknown>[],
   dateField: DateField,
@@ -264,13 +267,33 @@ function filterDataByDateField(
   endDate?: Date
 ): Record<string, unknown>[] {
   if (!startDate && !endDate) return data;
-  
+
+  // Define fallback date fields for when primary is null
+  const fallbackFields: Partial<Record<DateField, DateField[]>> = {
+    'booked_at': ['created_at', 'scheduled_at'],
+    'scheduled_at': ['created_at'],
+    'payment_date': ['created_at'],
+  };
+
   return data.filter(item => {
-    const dateValue = item[dateField] as string | null;
+    let dateValue = item[dateField] as string | null;
+
+    // If primary date field is null, try fallbacks
+    if (!dateValue && fallbackFields[dateField]) {
+      for (const fallback of fallbackFields[dateField]!) {
+        const fallbackValue = item[fallback] as string | null;
+        if (fallbackValue) {
+          dateValue = fallbackValue;
+          break;
+        }
+      }
+    }
+
+    // Still no date value after fallbacks, exclude this item
     if (!dateValue) return false;
-    
+
     const itemDate = new Date(dateValue);
-    
+
     // Use getTime() for more reliable date comparison
     if (startDate && itemDate.getTime() < startDate.getTime()) return false;
     if (endDate && itemDate.getTime() > endDate.getTime()) return false;
@@ -313,6 +336,11 @@ export function useCalculateCustomMetrics(
     queryFn: async () => {
       if (!metrics || metrics.length === 0) return {};
 
+      // SECURITY: Require org to be selected - don't fetch without org filter
+      if (!orgId) {
+        throw new Error('No organization selected');
+      }
+
       // Fetch ALL events and payments, then filter per-metric based on date_field
       // This allows different metrics to use different date fields
       let eventsQuery = supabase.from('events').select(`
@@ -324,8 +352,7 @@ export function useCalculateCustomMetrics(
           deal_closed,
           call_occurred
         )
-      `);
-      if (orgId) eventsQuery = eventsQuery.eq('organization_id', orgId);
+      `).eq('organization_id', orgId);
       if (filters?.sourceIds && filters.sourceIds.length > 0) {
         eventsQuery = eventsQuery.in('source_id', filters.sourceIds);
       } else if (filters?.sourceId) {
@@ -392,8 +419,9 @@ export function useCalculateCustomMetrics(
       const filteredEventIds = new Set(enrichedEvents.map(e => e.id as string));
 
       // Fetch payments - use large limit to avoid Supabase's 1000 row default
-      let paymentsQuery = supabase.from('payments').select('*');
-      if (orgId) paymentsQuery = paymentsQuery.eq('organization_id', orgId);
+      // SECURITY: org filter is required (orgId already validated above)
+      let paymentsQuery = supabase.from('payments').select('*')
+        .eq('organization_id', orgId);
       if (filters?.sourceIds && filters.sourceIds.length > 0) {
         paymentsQuery = paymentsQuery.in('source_id', filters.sourceIds);
       } else if (filters?.sourceId) {

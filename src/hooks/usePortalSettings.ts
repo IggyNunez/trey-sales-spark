@@ -62,19 +62,20 @@ export function useUpdatePortalSettings() {
 
   return useMutation({
     mutationFn: async (settings: Partial<PortalSettings> & { id: string }) => {
-      const { id, ...updateData } = settings;
-
-      // CRITICAL: Include org filter to prevent cross-org updates
-      let query = supabase
-        .from('portal_settings')
-        .update(updateData)
-        .eq('id', id);
-
-      if (orgId) {
-        query = query.eq('organization_id', orgId);
+      // SECURITY: Require org to be selected to prevent cross-org updates
+      if (!orgId) {
+        throw new Error('No organization selected');
       }
 
-      const { data, error } = await query.select().single();
+      const { id, ...updateData } = settings;
+
+      const { data, error } = await supabase
+        .from('portal_settings')
+        .update(updateData)
+        .eq('id', id)
+        .eq('organization_id', orgId)
+        .select()
+        .single();
 
       if (error) throw error;
       return data;

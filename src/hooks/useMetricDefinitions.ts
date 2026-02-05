@@ -121,16 +121,22 @@ export function useActiveMetricDefinitions() {
 export function useCreateMetricDefinition() {
   const queryClient = useQueryClient();
   const { currentOrganization } = useOrganization();
+  const orgId = currentOrganization?.id;
 
   return useMutation({
     mutationFn: async (metric: Partial<MetricDefinition>) => {
+      // SECURITY: Require org to be selected to create metrics
+      if (!orgId) {
+        throw new Error('No organization selected');
+      }
+
       // Determine default date_field based on data_source
       const defaultDateField = metric.data_source === 'payments' ? 'payment_date' : 'scheduled_at';
-      
+
       const { data, error } = await supabase
         .from('metric_definitions')
         .insert({
-          organization_id: currentOrganization?.id,
+          organization_id: orgId,
           name: metric.name || '',
           display_name: metric.display_name || '',
           description: metric.description || null,
@@ -167,11 +173,18 @@ export function useCreateMetricDefinition() {
 
 export function useUpdateMetricDefinition() {
   const queryClient = useQueryClient();
+  const { currentOrganization } = useOrganization();
+  const orgId = currentOrganization?.id;
 
   return useMutation({
     mutationFn: async ({ id, ...updates }: Partial<MetricDefinition> & { id: string }) => {
+      // SECURITY: Require org to be selected to prevent cross-org updates
+      if (!orgId) {
+        throw new Error('No organization selected');
+      }
+
       const updatePayload: Record<string, unknown> = {};
-      
+
       if (updates.name !== undefined) updatePayload.name = updates.name;
       if (updates.display_name !== undefined) updatePayload.display_name = updates.display_name;
       if (updates.description !== undefined) updatePayload.description = updates.description;
@@ -193,6 +206,7 @@ export function useUpdateMetricDefinition() {
         .from('metric_definitions')
         .update(updatePayload)
         .eq('id', id)
+        .eq('organization_id', orgId)
         .select()
         .single();
 
@@ -212,13 +226,21 @@ export function useUpdateMetricDefinition() {
 
 export function useDeleteMetricDefinition() {
   const queryClient = useQueryClient();
+  const { currentOrganization } = useOrganization();
+  const orgId = currentOrganization?.id;
 
   return useMutation({
     mutationFn: async (id: string) => {
+      // SECURITY: Require org to be selected to prevent cross-org deletions
+      if (!orgId) {
+        throw new Error('No organization selected');
+      }
+
       const { error } = await supabase
         .from('metric_definitions')
         .delete()
-        .eq('id', id);
+        .eq('id', id)
+        .eq('organization_id', orgId);
 
       if (error) throw error;
     },
@@ -235,17 +257,25 @@ export function useDeleteMetricDefinition() {
 
 export function useReorderMetrics() {
   const queryClient = useQueryClient();
+  const { currentOrganization } = useOrganization();
+  const orgId = currentOrganization?.id;
 
   return useMutation({
     mutationFn: async (orderedIds: string[]) => {
-      // Update each metric's sort_order
-      const updates = orderedIds.map((id, index) => 
+      // SECURITY: Require org to be selected to prevent cross-org reordering
+      if (!orgId) {
+        throw new Error('No organization selected');
+      }
+
+      // Update each metric's sort_order with org filter
+      const updates = orderedIds.map((id, index) =>
         supabase
           .from('metric_definitions')
           .update({ sort_order: index })
           .eq('id', id)
+          .eq('organization_id', orgId)
       );
-      
+
       await Promise.all(updates);
     },
     onSuccess: () => {

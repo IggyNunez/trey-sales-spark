@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Download, Loader2, CheckCircle } from 'lucide-react';
+import { useOrganization } from '@/hooks/useOrganization';
 
 interface EventRow {
   id: string;
@@ -24,9 +25,17 @@ export default function ExportEventsPage() {
   const [events, setEvents] = useState<EventRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [downloaded, setDownloaded] = useState(false);
+  const { currentOrganization } = useOrganization();
+  const orgId = currentOrganization?.id;
 
   useEffect(() => {
     async function fetchEvents() {
+      // SECURITY: Require org to be selected before fetching
+      if (!orgId) {
+        setLoading(false);
+        return;
+      }
+
       const { data, error } = await supabase
         .from('events')
         .select(`
@@ -45,7 +54,7 @@ export default function ExportEventsPage() {
           notes,
           pcf_submitted
         `)
-        .eq('organization_id', '74c1d616-43ca-4acc-bd3a-4cefc171fa31')
+        .eq('organization_id', orgId)
         .gte('scheduled_at', '2026-01-01')
         .lt('scheduled_at', '2026-02-01')
         .order('scheduled_at', { ascending: true });
@@ -56,7 +65,7 @@ export default function ExportEventsPage() {
       setLoading(false);
     }
     fetchEvents();
-  }, []);
+  }, [orgId]);
 
   const downloadCSV = () => {
     const headers = [
@@ -107,7 +116,8 @@ export default function ExportEventsPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `acquisition-ace-events-january-2026.csv`;
+    const orgName = currentOrganization?.name?.toLowerCase().replace(/\s+/g, '-') || 'events';
+    link.download = `${orgName}-events-january-2026.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -120,7 +130,7 @@ export default function ExportEventsPage() {
       <div className="bg-card border rounded-lg p-8 max-w-md w-full text-center space-y-6">
         <h1 className="text-2xl font-bold">Export Events</h1>
         <p className="text-muted-foreground">
-          Acquisition Ace - January 2026
+          {currentOrganization?.name || 'Organization'} - January 2026
         </p>
         
         {loading ? (

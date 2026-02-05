@@ -35,12 +35,14 @@ export function useDashboardMetrics(filters?: MetricFilters) {
   return useQuery({
     queryKey: ['dashboard-metrics', orgId, filters, user?.id, isAdmin],
     queryFn: async () => {
-      // Fetch all events for this organization
-      let eventsQuery = supabase.from('events').select('*');
-      
-      if (orgId) {
-        eventsQuery = eventsQuery.eq('organization_id', orgId);
+      // SECURITY: Require org to be selected - don't fetch without org filter
+      if (!orgId) {
+        throw new Error('No organization selected');
       }
+
+      // Fetch all events for this organization
+      let eventsQuery = supabase.from('events').select('*')
+        .eq('organization_id', orgId);
       
       // Always filter by scheduled_at (when the call is slated to take place)
       if (filters?.startDate) {
@@ -57,11 +59,11 @@ export function useDashboardMetrics(filters?: MetricFilters) {
       if (eventsError) throw eventsError;
 
       // Fetch payments for this organization
-      let paymentsQuery = supabase.from('payments').select('*');
-      if (orgId) {
-        paymentsQuery = paymentsQuery.eq('organization_id', orgId);
-      }
-      const { data: payments, error: paymentsError } = await paymentsQuery;
+      // SECURITY: org filter is required (orgId already validated above)
+      const { data: payments, error: paymentsError } = await supabase
+        .from('payments')
+        .select('*')
+        .eq('organization_id', orgId);
       if (paymentsError) throw paymentsError;
 
       // Calculate metrics
@@ -188,26 +190,22 @@ export function useRevenueByCloser() {
   return useQuery({
     queryKey: ['revenue-by-closer', orgId, user?.id],
     queryFn: async () => {
-      let eventsQuery = supabase
-        .from('events')
-        .select('id, closer_id, event_outcome');
-      
-      if (orgId) {
-        eventsQuery = eventsQuery.eq('organization_id', orgId);
+      // SECURITY: Require org to be selected
+      if (!orgId) {
+        throw new Error('No organization selected');
       }
-      
-      const { data: events, error: eventsError } = await eventsQuery;
+
+      const { data: events, error: eventsError } = await supabase
+        .from('events')
+        .select('id, closer_id, event_outcome')
+        .eq('organization_id', orgId);
+
       if (eventsError) throw eventsError;
 
-      let paymentsQuery = supabase
+      const { data: payments, error: paymentsError } = await supabase
         .from('payments')
-        .select('event_id, amount, refund_amount');
-      
-      if (orgId) {
-        paymentsQuery = paymentsQuery.eq('organization_id', orgId);
-      }
-      
-      const { data: payments, error: paymentsError } = await paymentsQuery;
+        .select('event_id, amount, refund_amount')
+        .eq('organization_id', orgId);
       if (paymentsError) throw paymentsError;
 
       const { data: profiles, error: profilesError } = await supabase

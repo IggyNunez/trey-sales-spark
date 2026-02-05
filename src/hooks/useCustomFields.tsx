@@ -150,11 +150,17 @@ export function useCustomFields(category?: CustomFieldCategory) {
   // Update a custom field
   const updateCustomField = useMutation({
     mutationFn: async (input: UpdateCustomFieldInput) => {
+      if (!currentOrganization?.id) {
+        throw new Error('No organization selected');
+      }
+
       const { id, ...updates } = input;
 
+      // SECURITY: Include org filter to prevent cross-org updates
       const { data, error } = await getCustomFieldsTable()
         .update(updates)
         .eq('id', id)
+        .eq('organization_id', currentOrganization.id)
         .select()
         .single();
 
@@ -184,9 +190,15 @@ export function useCustomFields(category?: CustomFieldCategory) {
   // Delete a custom field (soft delete by setting is_active to false)
   const deleteCustomField = useMutation({
     mutationFn: async (id: string) => {
+      if (!currentOrganization?.id) {
+        throw new Error('No organization selected');
+      }
+
+      // SECURITY: Include org filter to prevent cross-org deletions
       const { error } = await getCustomFieldsTable()
         .update({ is_active: false })
-        .eq('id', id);
+        .eq('id', id)
+        .eq('organization_id', currentOrganization.id);
 
       if (error) {
         console.error('Error deleting custom field:', error);
@@ -212,10 +224,16 @@ export function useCustomFields(category?: CustomFieldCategory) {
   // Reorder custom fields
   const reorderCustomFields = useMutation({
     mutationFn: async (fields: { id: string; display_order: number }[]) => {
+      if (!currentOrganization?.id) {
+        throw new Error('No organization selected');
+      }
+
+      // SECURITY: Include org filter to prevent cross-org reordering
       const updates = fields.map(field =>
         getCustomFieldsTable()
           .update({ display_order: field.display_order })
           .eq('id', field.id)
+          .eq('organization_id', currentOrganization.id)
       );
 
       const results = await Promise.all(updates);

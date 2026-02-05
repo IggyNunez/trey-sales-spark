@@ -7,8 +7,8 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { UserPlus, Copy, Trash2, RefreshCw, Loader2, CheckCircle, Shield } from 'lucide-react';
-import { useInvitations, useCreateInvitation, useDeleteInvitation, useResendInvitation, useUpdateInvitationRole, type InviteRole } from '@/hooks/useInvitations';
+import { UserPlus, Copy, Trash2, RefreshCw, Loader2, CheckCircle, Shield, Phone, Headphones } from 'lucide-react';
+import { useInvitations, useCreateInvitation, useDeleteInvitation, useResendInvitation, useUpdateInvitationRole, type InviteRole, type InviteType } from '@/hooks/useInvitations';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { format, isPast } from 'date-fns';
@@ -21,11 +21,12 @@ export function InviteOrgMember() {
   const { data: portalSettings } = usePortalSettings();
 
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState<'admin' | 'member'>('member');
+  const [role, setRole] = useState<InviteRole>('member');
+  const [linkedName, setLinkedName] = useState(''); // Closer or setter name to link
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Use 'admin' type for org member invites (not linked to a closer)
-  const { data: invitations, isLoading } = useInvitations('admin');
+  // Get all invitations for the org (all types)
+  const { data: invitations, isLoading } = useInvitations();
   const createInvitation = useCreateInvitation();
   const deleteInvitation = useDeleteInvitation();
   const resendInvitation = useResendInvitation();
@@ -34,21 +35,28 @@ export function InviteOrgMember() {
   const handleInvite = async () => {
     if (!email.trim()) return;
 
+    // Determine invite type based on role
+    let inviteType: InviteType = 'admin';
+    if (role === 'closer') inviteType = 'closer';
+    else if (role === 'setter') inviteType = 'setter';
+
     try {
-      const invitation = await createInvitation.mutateAsync({ 
-        email, 
-        inviteType: 'admin', // This creates an admin/member invite (not sales_rep)
-        role: role,
+      const invitation = await createInvitation.mutateAsync({
+        email,
+        inviteType,
+        role,
+        closerName: (role === 'closer' || role === 'setter') && linkedName ? linkedName : undefined,
       });
-      
+
       // Send the invite email
       supabase.functions.invoke('send-invite-email', {
         body: {
           email: invitation.email,
           token: invitation.token,
-          inviteType: 'admin',
+          inviteType,
           organizationName: currentOrganization?.name,
-          role: role,
+          role,
+          linkedName: linkedName || undefined,
         },
       }).then(({ error }) => {
         if (error) {
@@ -57,9 +65,10 @@ export function InviteOrgMember() {
       }).catch((emailError) => {
         console.warn('Email sending error:', emailError);
       });
-      
+
       toast.success(`Invitation created for ${email}. Copy the invite link to share it.`);
       setEmail('');
+      setLinkedName('');
     } catch (error) {
       toast.error('Failed to create invitation');
     }
@@ -153,19 +162,65 @@ export function InviteOrgMember() {
           
           <div className="space-y-2">
             <Label htmlFor="member-role">Role</Label>
-            <Select value={role} onValueChange={(v) => setRole(v as 'admin' | 'member')}>
+            <Select value={role} onValueChange={(v) => setRole(v as InviteRole)}>
               <SelectTrigger id="member-role">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="admin">Admin - Full access to manage settings</SelectItem>
-                <SelectItem value="member">Member - View access only</SelectItem>
+                <SelectItem value="admin">
+                  <div className="flex items-center gap-2">
+                    <Shield className="h-4 w-4" />
+                    Admin - Full access to manage settings
+                  </div>
+                </SelectItem>
+                <SelectItem value="member">
+                  <div className="flex items-center gap-2">
+                    Member - View access only
+                  </div>
+                </SelectItem>
+                <SelectItem value="closer">
+                  <div className="flex items-center gap-2">
+                    <Phone className="h-4 w-4" />
+                    Closer - Access own events, PCF, and commissions
+                  </div>
+                </SelectItem>
+                <SelectItem value="setter">
+                  <div className="flex items-center gap-2">
+                    <Headphones className="h-4 w-4" />
+                    Setter - Access own leads and events
+                  </div>
+                </SelectItem>
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              This person will only see data from {currentOrganization?.name || 'this organization'}
+              {role === 'closer'
+                ? 'Closers can only see their own events, submit PCFs, and view their commissions'
+                : role === 'setter'
+                ? 'Setters can only see their own leads and events for those leads'
+                : `This person will only see data from ${currentOrganization?.name || 'this organization'}`}
             </p>
           </div>
+
+          {/* Linked Name field for Closers and Setters */}
+          {(role === 'closer' || role === 'setter') && (
+            <div className="space-y-2">
+              <Label htmlFor="linked-name">
+                {role === 'closer' ? 'Closer Name' : 'Setter Name'} (as it appears in your data)
+              </Label>
+              <Input
+                id="linked-name"
+                type="text"
+                placeholder={role === 'closer' ? 'e.g., John Smith' : 'e.g., Jane Doe'}
+                value={linkedName}
+                onChange={(e) => setLinkedName(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                {role === 'closer'
+                  ? 'Enter the name exactly as it appears in your CRM/calendar for this closer'
+                  : 'Enter the name exactly as it appears in your lead data for this setter'}
+              </p>
+            </div>
+          )}
           
           <Button 
             onClick={handleInvite} 
@@ -221,6 +276,8 @@ export function InviteOrgMember() {
                           <SelectContent>
                             <SelectItem value="admin">Admin</SelectItem>
                             <SelectItem value="member">Member</SelectItem>
+                            <SelectItem value="closer">Closer</SelectItem>
+                            <SelectItem value="setter">Setter</SelectItem>
                           </SelectContent>
                         </Select>
                       ) : (

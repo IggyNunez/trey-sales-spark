@@ -14,10 +14,12 @@ import {
   Camera,
   Shield,
   Headphones,
-  FileBarChart
+  FileBarChart,
+  UserCheck
 } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/hooks/useAuth';
+import { usePermissions } from '@/hooks/usePermissions';
 import {
   Sidebar,
   SidebarContent,
@@ -38,24 +40,39 @@ import { OrganizationSwitcher } from '@/components/organization/OrganizationSwit
 import { Badge } from '@/components/ui/badge';
 import { useOrganization } from '@/hooks/useOrganization';
 
-// All admin users see all features now (removed org restriction)
-const getAdminItems = () => {
-  return [
-    { title: 'Dashboard', url: '/', icon: LayoutDashboard },
-    { title: 'Attribution', url: '/attribution', icon: ClipboardList },
-    { title: 'Analytics', url: '/analytics', icon: BarChart3 },
-    { title: 'Call Reports', url: '/calls-report', icon: FileBarChart },
-    { title: 'Setter Metrics', url: '/setter-metrics', icon: Headphones },
-    { title: 'Team', url: '/team', icon: Activity },
-    { title: 'Rep Portal', url: '/rep', icon: ExternalLink },
-    { title: 'Settings', url: '/settings', icon: Settings },
-  ];
-};
+// Admin menu items - all features for admins
+const adminItems = [
+  { title: 'Dashboard', url: '/', icon: LayoutDashboard },
+  { title: 'Attribution', url: '/attribution', icon: ClipboardList },
+  { title: 'Analytics', url: '/analytics', icon: BarChart3 },
+  { title: 'Call Reports', url: '/calls-report', icon: FileBarChart },
+  { title: 'Setter Metrics', url: '/setter-metrics', icon: Headphones },
+  { title: 'Team', url: '/team', icon: Activity },
+  { title: 'Rep Portal', url: '/rep', icon: ExternalLink },
+  { title: 'Settings', url: '/settings', icon: Settings },
+];
 
+// Super admin only items
 const superAdminItems = [
   { title: 'Client Management', url: '/super-admin', icon: Shield },
 ];
 
+// Closer menu items - limited to their own data
+const closerItems = [
+  { title: 'My Events', url: '/', icon: Calendar },
+  { title: 'Post-Call Form', url: '/pcf', icon: FileText },
+  { title: 'My Commissions', url: '/my-commissions', icon: DollarSign },
+  { title: 'My Stats', url: '/my-stats', icon: BarChart3 },
+];
+
+// Setter menu items - focused on leads
+const setterItems = [
+  { title: 'My Leads', url: '/my-leads', icon: UserCheck },
+  { title: 'My Events', url: '/', icon: Calendar },
+  { title: 'My Stats', url: '/my-stats', icon: BarChart3 },
+];
+
+// Legacy sales rep items (fallback)
 const salesRepItems = [
   { title: 'My Events', url: '/', icon: Calendar },
   { title: 'Post-Call Form', url: '/pcf', icon: FileText },
@@ -65,12 +82,37 @@ const salesRepItems = [
 export function AppSidebar() {
   const { state } = useSidebar();
   const location = useLocation();
-  const { isAdmin, isSuperAdmin, profile, signOut } = useAuth();
+  const { isAdmin, isSuperAdmin, isCloser, isSetter, isAdminOrAbove, userRole, profile, signOut } = useAuth();
+  const { can } = usePermissions();
   const { currentOrganization } = useOrganization();
   const collapsed = state === 'collapsed';
 
-  const adminItems = getAdminItems();
-  const items = isAdmin ? adminItems : salesRepItems;
+  // Determine menu items based on role
+  const getMenuItems = () => {
+    if (isAdminOrAbove) return adminItems;
+    if (isCloser) return closerItems;
+    if (isSetter) return setterItems;
+    return salesRepItems; // Fallback for legacy sales_rep role
+  };
+
+  // Get the section label based on role
+  const getSectionLabel = () => {
+    if (isAdminOrAbove) return 'Management';
+    if (isCloser) return 'Closer Portal';
+    if (isSetter) return 'Setter Portal';
+    return 'Sales';
+  };
+
+  // Get portal subtitle for header
+  const getPortalSubtitle = () => {
+    if (isSuperAdmin) return 'Super Admin';
+    if (isAdmin) return 'Admin Portal';
+    if (isCloser) return 'Closer Portal';
+    if (isSetter) return 'Setter Portal';
+    return 'Rep Portal';
+  };
+
+  const items = getMenuItems();
   const currentPath = location.pathname;
 
   const initials = profile?.name
@@ -90,14 +132,14 @@ export function AppSidebar() {
                 SalesReps
               </span>
               <span className="text-xs text-sidebar-foreground/60">
-                {isSuperAdmin ? 'Super Admin' : isAdmin ? 'Admin Portal' : 'Rep Portal'}
+                {getPortalSubtitle()}
               </span>
             </div>
           )}
         </div>
         
-        {/* Organization Switcher for admins */}
-        {isAdmin && (
+        {/* Organization Switcher - admins can switch, others see their org */}
+        {isAdminOrAbove && (
           <div className="mt-4">
             <OrganizationSwitcher collapsed={collapsed} />
           </div>
@@ -107,7 +149,7 @@ export function AppSidebar() {
       <SidebarContent className="px-2">
         <SidebarGroup>
           <SidebarGroupLabel className="text-sidebar-foreground/50">
-            {isAdmin ? 'Management' : 'Sales'}
+            {getSectionLabel()}
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
@@ -181,9 +223,12 @@ export function AppSidebar() {
                 <span className="truncate text-sm font-medium text-sidebar-foreground">
                   {profile?.name || 'User'}
                 </span>
-                {isSuperAdmin && (
+                {userRole && (
                   <Badge variant="secondary" className="text-[10px] px-1 py-0">
-                    SA
+                    {userRole === 'super_admin' ? 'SA' :
+                     userRole === 'admin' ? 'Admin' :
+                     userRole === 'closer' ? 'Closer' :
+                     userRole === 'setter' ? 'Setter' : 'Rep'}
                   </Badge>
                 )}
               </div>
